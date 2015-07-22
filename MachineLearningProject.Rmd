@@ -1,0 +1,114 @@
+---
+title: "Machine Learning"
+author: "Kevin Brock"
+date: "July 10, 2015"
+output: html_document
+---
+
+# Preprocessing
+
+```{r, cache=TRUE}
+
+library(doParallel)
+registerDoParallel(cores=4)
+
+library(dplyr)
+library(randomForest)
+library(caret)
+library(caretEnsemble)
+
+if( !dir.exists("data") ) {
+    dir.create("data")
+}
+
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", 
+              "data/pml-training.csv", method="wget")
+
+trainingDataRaw <- read.csv('data/pml-training.csv', stringsAsFactors=FALSE)
+
+
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", 
+              "data/pml-testing.csv", method="wget")
+
+submissionData <- read.csv('data/pml-testing.csv', stringsAsFactors=FALSE)
+
+set.seed(3141)
+
+classe <- as.factor(trainingDataRaw$classe)
+trainingData <- select(trainingDataRaw, -classe)
+
+# Some columns are almost entirely NA
+includeCol <- sapply(trainingData, function(x) { sum(is.na(x)) } ) == 0
+includeNames <- names(includeCol)[includeCol == TRUE]
+trainingData <- trainingData[includeNames] 
+
+# Omit bookkeeping
+
+trainingData <- select(trainingData, -c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2,
+                        cvtd_timestamp, new_window, num_window))
+
+includeCol <- sapply(trainingData, function(x) { sum(is.na(as.numeric(x))) }) == 0
+includeNames <- names(includeCol)[includeCol == TRUE]
+trainingData <- trainingData[includeNames] 
+
+// Put back classe
+trainingData <- cbind(classe, trainingData)
+
+inBuild <- createDataPartition(trainingData$classe, p=0.7, list=FALSE)
+
+validationData <- trainingData[-inBuild,]
+buildData <- trainingData[inBuild,]
+
+inTraining <- createDataPartition(buildData$classe, p=0.7, list=FALSE)
+training <- buildData[inTraining,]
+testing <- buildData[-inTraining,]
+
+inTinyTest <- createDataPartition(training$classe, p=.90, list=FALSE)
+tinyData <- training[-inTinyTest,]
+```
+
+```{r, cache=TRUE}
+
+# Read back cached models with 
+#    myVariableName = readRDS("myFile.rds")
+
+
+# 
+# Read in the model generated and saved by
+#   modFitGbm <- train(classe ~ ., method="gbm", verbose=FALSE, data=tinyData)
+#   saveRDS(modFitGbm, file="modFitGbmTiny001.rds")
+#
+modFitGbm <- readRDS("modFitGbmTiny001.rds")
+print(modFitGbm)
+table(predict(modFitGbm,testing), testing$classe)
+
+# 
+# Read in the model generated and saved by
+#   modFitGbmFull <- train(classe ~ ., method="gbm", verbose=FALSE, data=training)
+#   saveRDS(modFitGbmFull, file="modFitGbmFull001.rds")
+#
+modFitGbmFull <- readRDS("modFitGbmFull001.rds")
+print(modFitGbmFull)
+table(predict(modFitGbmFull,testing), testing$classe)
+
+
+# 
+# Read in the model generated and saved by
+#   set.seed(5926)
+#   modFitRfFull <- train(classe ~ ., method="rf", prox=TRUE, data=training)
+#   saveRDS(modFitRfFull, file="modFitRfFull001.rds")
+#
+modFitRfFull <-  readRDS("modFitRfFull001.rds")
+print(modFitRfFull)
+table(predict(modFitRfFull,testing), testing$classe)
+
+#   set.seed(5358)
+#   modFitRfFullCv <- train(classe ~ ., method="rf", trControl = trainControl(method="cv"), 
+#                               prox=TRUE, data=training)
+#   saveRDS(modFitRfFullCv, file="modFitRfFullCv001.rds")
+modFitRfFullCv <-  readRDS("modFitRfFullCv001.rds")
+print(modFitRfFullCv)
+table(predict(modFitRfFullCv,testing), testing$classe)
+
+```
+
