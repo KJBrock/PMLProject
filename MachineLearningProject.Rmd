@@ -5,6 +5,11 @@ date: "July 10, 2015"
 output: html_document
 ---
 
+# Overview
+
+We're trying to predict which of five forms of an activity is being performed based on 
+measurements from sensors worn by the study participants.
+
 # Preprocessing
 
 ```{r, cache=TRUE}
@@ -51,7 +56,7 @@ includeCol <- sapply(trainingData, function(x) { sum(is.na(as.numeric(x))) }) ==
 includeNames <- names(includeCol)[includeCol == TRUE]
 trainingData <- trainingData[includeNames] 
 
-// Put back classe
+# Put back classe
 trainingData <- cbind(classe, trainingData)
 
 inBuild <- createDataPartition(trainingData$classe, p=0.7, list=FALSE)
@@ -63,24 +68,13 @@ inTraining <- createDataPartition(buildData$classe, p=0.7, list=FALSE)
 training <- buildData[inTraining,]
 testing <- buildData[-inTraining,]
 
-inTinyTest <- createDataPartition(training$classe, p=.90, list=FALSE)
-tinyData <- training[-inTinyTest,]
 ```
 
+## Boosting
+
+Boosting generated very good results, using method "gbm" with train().
+
 ```{r, cache=TRUE}
-
-# Read back cached models with 
-#    myVariableName = readRDS("myFile.rds")
-
-
-# 
-# Read in the model generated and saved by
-#   modFitGbm <- train(classe ~ ., method="gbm", verbose=FALSE, data=tinyData)
-#   saveRDS(modFitGbm, file="modFitGbmTiny001.rds")
-#
-modFitGbm <- readRDS("modFitGbmTiny001.rds")
-print(modFitGbm)
-table(predict(modFitGbm,testing), testing$classe)
 
 # 
 # Read in the model generated and saved by
@@ -90,8 +84,15 @@ table(predict(modFitGbm,testing), testing$classe)
 modFitGbmFull <- readRDS("modFitGbmFull001.rds")
 print(modFitGbmFull)
 table(predict(modFitGbmFull,testing), testing$classe)
+```
 
+## Random Forests
 
+Random forests gave me the best results for this problem.  The first attempt was 
+an example of why you need to do cross validation.  When train() is run with the "rf" method 
+and no cv specification we get very bad results on the testing set.
+
+```{r, cache=TRUE}
 # 
 # Read in the model generated and saved by
 #   set.seed(5926)
@@ -101,7 +102,11 @@ table(predict(modFitGbmFull,testing), testing$classe)
 modFitRfFull <-  readRDS("modFitRfFull001.rds")
 print(modFitRfFull)
 table(predict(modFitRfFull,testing), testing$classe)
+```
 
+Adding a "cv" argument to trControl fixes this, and gives really excellent results.
+
+```{r, cache=TRUE}
 #   set.seed(5358)
 #   modFitRfFullCv <- train(classe ~ ., method="rf", trControl = trainControl(method="cv"), 
 #                               prox=TRUE, data=training)
