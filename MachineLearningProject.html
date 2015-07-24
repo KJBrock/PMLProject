@@ -80,9 +80,20 @@ img {
 ## Loading required package: parallel</code></pre>
 <pre class="r"><code>registerDoParallel(cores=4)
 
+library(randomForest)</code></pre>
+<pre><code>## randomForest 4.6-10
+## Type rfNews() to see new features/changes/bug fixes.</code></pre>
+<pre class="r"><code>library(caret)</code></pre>
+<pre><code>## Loading required package: lattice
+## Loading required package: ggplot2</code></pre>
+<pre class="r"><code>library(caretEnsemble)
 library(dplyr)</code></pre>
 <pre><code>## 
 ## Attaching package: 'dplyr'
+## 
+## The following object is masked from 'package:randomForest':
+## 
+##     combine
 ## 
 ## The following object is masked from 'package:stats':
 ## 
@@ -91,39 +102,29 @@ library(dplyr)</code></pre>
 ## The following objects are masked from 'package:base':
 ## 
 ##     intersect, setdiff, setequal, union</code></pre>
-<pre class="r"><code>library(randomForest)</code></pre>
-<pre><code>## randomForest 4.6-10
-## Type rfNews() to see new features/changes/bug fixes.
-## 
-## Attaching package: 'randomForest'
-## 
-## The following object is masked from 'package:dplyr':
-## 
-##     combine</code></pre>
-<pre class="r"><code>library(caret)</code></pre>
-<pre><code>## Loading required package: lattice
-## Loading required package: ggplot2</code></pre>
-<pre class="r"><code>library(caretEnsemble)
-
-if( !dir.exists(&quot;data&quot;) ) {
+<pre class="r"><code>if( !dir.exists(&quot;data&quot;) ) {
     dir.create(&quot;data&quot;)
 }
 
-download.file(&quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv&quot;, 
-              &quot;data/pml-training.csv&quot;, method=&quot;wget&quot;)
+if( !file.exists(&quot;data/pml-training.csv&quot;)) {
+    download.file(&quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv&quot;, 
+                  &quot;data/pml-training.csv&quot;, method=&quot;wget&quot;)
+}
 
 trainingDataRaw &lt;- read.csv('data/pml-training.csv', stringsAsFactors=FALSE)
 
 
-download.file(&quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv&quot;, 
-              &quot;data/pml-testing.csv&quot;, method=&quot;wget&quot;)
+if( !file.exists(&quot;data/pml-testing.csv&quot;)) {
+    download.file(&quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv&quot;, 
+                    &quot;data/pml-testing.csv&quot;, method=&quot;wget&quot;)
+}
 
 submissionData &lt;- read.csv('data/pml-testing.csv', stringsAsFactors=FALSE)
 
 set.seed(3141)
 
 classe &lt;- as.factor(trainingDataRaw$classe)
-trainingData &lt;- select(trainingDataRaw, -classe)
+trainingData &lt;- dplyr::select(trainingDataRaw, -classe)
 
 # Some columns are almost entirely NA
 includeCol &lt;- sapply(trainingData, function(x) { sum(is.na(x)) } ) == 0
@@ -132,8 +133,9 @@ trainingData &lt;- trainingData[includeNames]
 
 # Omit bookkeeping
 
-trainingData &lt;- select(trainingData, -c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2,
-                        cvtd_timestamp, new_window, num_window))
+trainingData &lt;- dplyr::select(trainingData, 
+        -c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2,
+            cvtd_timestamp, new_window, num_window))
 
 includeCol &lt;- sapply(trainingData, function(x) { sum(is.na(as.numeric(x))) }) == 0</code></pre>
 <pre><code>## Warning in FUN(X[[i]], ...): NAs introduced by coercion</code></pre>
@@ -186,114 +188,38 @@ testing &lt;- buildData[-inTraining,]</code></pre>
 <div id="boosting" class="section level2">
 <h2>Boosting</h2>
 <p>Boosting generated very good results, using method “gbm” with train().</p>
-<pre class="r"><code># 
-# Read in the model generated and saved by
-#   modFitGbmFull &lt;- train(classe ~ ., method=&quot;gbm&quot;, verbose=FALSE, data=training)
-#   saveRDS(modFitGbmFull, file=&quot;modFitGbmFull001.rds&quot;)
-#
-modFitGbmFull &lt;- readRDS(&quot;modFitGbmFull001.rds&quot;)
-print(modFitGbmFull)</code></pre>
-<pre><code>## Stochastic Gradient Boosting 
-## 
-## 9619 samples
-##   52 predictor
-##    5 classes: 'A', 'B', 'C', 'D', 'E' 
-## 
-## No pre-processing
-## Resampling: Bootstrapped (25 reps) 
-## Summary of sample sizes: 9619, 9619, 9619, 9619, 9619, 9619, ... 
-## Resampling results across tuning parameters:
-## 
-##   interaction.depth  n.trees  Accuracy   Kappa      Accuracy SD
-##   1                   50      0.7491586  0.6819718  0.007387241
-##   1                  100      0.8146718  0.7654773  0.005796269
-##   1                  150      0.8472106  0.8066396  0.006377173
-##   2                   50      0.8515120  0.8118921  0.006592348
-##   2                  100      0.9006464  0.8742498  0.006325585
-##   2                  150      0.9246714  0.9046781  0.005909179
-##   3                   50      0.8918985  0.8631294  0.006096331
-##   3                  100      0.9341783  0.9167136  0.005066791
-##   3                  150      0.9525972  0.9400298  0.003974117
-##   Kappa SD   
-##   0.009533466
-##   0.007241897
-##   0.008023809
-##   0.008275090
-##   0.007966187
-##   0.007432056
-##   0.007701471
-##   0.006374427
-##   0.005016967
-## 
-## Tuning parameter 'shrinkage' was held constant at a value of 0.1
-## 
-## Tuning parameter 'n.minobsinnode' was held constant at a value of 10
-## Accuracy was used to select the optimal model using  the largest value.
-## The final values used for the model were n.trees = 150,
-##  interaction.depth = 3, shrinkage = 0.1 and n.minobsinnode = 10.</code></pre>
-<pre class="r"><code>table(predict(modFitGbmFull,testing), testing$classe)</code></pre>
-<pre><code>## Loading required package: gbm
-## Loading required package: survival
-## 
-## Attaching package: 'survival'
-## 
-## The following object is masked from 'package:caret':
-## 
-##     cluster
-## 
-## Loading required package: splines
-## Loaded gbm 2.1.1
-## Loading required package: plyr
-## -------------------------------------------------------------------------
-## You have loaded plyr after dplyr - this is likely to cause problems.
-## If you need functions from both plyr and dplyr, please load plyr first, then dplyr:
-## library(plyr); library(dplyr)
-## -------------------------------------------------------------------------
-## 
-## Attaching package: 'plyr'
-## 
-## The following objects are masked from 'package:dplyr':
-## 
-##     arrange, count, desc, failwith, id, mutate, rename, summarise,
-##     summarize</code></pre>
-<pre><code>##    
-##        A    B    C    D    E
-##   A 1157   22    0    0    1
-##   B   10  740   19    1    8
-##   C    2   30  691   22    4
-##   D    1    3    7  648    9
-##   E    1    2    1    4  735</code></pre>
+<pre class="r"><code>if( !file.exists(&quot;modFitGbmFull001.rds&quot;)) {
+    modFitGbmFull &lt;- train(classe ~ ., method=&quot;gbm&quot;, verbose=FALSE, data=training)
+    saveRDS(modFitGbmFull, file=&quot;modFitGbmFull001.rds&quot;)
+} else {
+    modFitGbmFull &lt;- readRDS(&quot;modFitGbmFull001.rds&quot;)
+}
+#print(modFitGbmFull)
+predGbm &lt;- predict(modFitGbmFull,testing)
+table(predGbm, testing$classe)</code></pre>
+<pre><code>##        
+## predGbm    A    B    C    D    E
+##       A 1157   22    0    0    1
+##       B   10  740   19    1    8
+##       C    2   30  691   22    4
+##       D    1    3    7  648    9
+##       E    1    2    1    4  735</code></pre>
+<pre class="r"><code>accGbm &lt;- sum(predGbm == testing$classe)/length(testing$classe)
+errGbm &lt;- 1 - accGbm</code></pre>
 </div>
 <div id="random-forests" class="section level2">
 <h2>Random Forests</h2>
 <p>Random forests gave me the best results for this problem. The first attempt was an example of why you need to do cross validation. When train() is run with the “rf” method and no cv specification we get very bad results on the testing set.</p>
-<pre class="r"><code># 
-# Read in the model generated and saved by
-#   set.seed(5926)
-#   modFitRfFull &lt;- train(classe ~ ., method=&quot;rf&quot;, prox=TRUE, data=training)
-#   saveRDS(modFitRfFull, file=&quot;modFitRfFull001.rds&quot;)
-#
-modFitRfFull &lt;-  readRDS(&quot;modFitRfFull001.rds&quot;)
-print(modFitRfFull)</code></pre>
-<pre><code>## Random Forest 
-## 
-## 9619 samples
-##   53 predictor
-##    5 classes: 'A', 'B', 'C', 'D', 'E' 
-## 
-## No pre-processing
-## Resampling: Bootstrapped (25 reps) 
-## Summary of sample sizes: 9619, 9619, 9619, 9619, 9619, 9619, ... 
-## Resampling results across tuning parameters:
-## 
-##   mtry  Accuracy   Kappa      Accuracy SD  Kappa SD   
-##    2    0.9812841  0.9763278  0.003045769  0.003849629
-##   27    0.9839105  0.9796506  0.002969055  0.003754412
-##   52    0.9767214  0.9705612  0.004157710  0.005263510
-## 
-## Accuracy was used to select the optimal model using  the largest value.
-## The final value used for the model was mtry = 27.</code></pre>
-<pre class="r"><code>table(predict(modFitRfFull,testing), testing$classe)</code></pre>
+<pre class="r"><code>if( !file.exists(&quot;modFitRfFull001.rds&quot;)) {
+    set.seed(5926)
+    modFitRfFull &lt;- train(classe ~ ., method=&quot;rf&quot;, prox=TRUE, data=training)
+    saveRDS(modFitRfFull, file=&quot;modFitRfFull001.rds&quot;)
+} else {
+    modFitRfFull &lt;-  readRDS(&quot;modFitRfFull001.rds&quot;)
+}
+
+#print(modFitRfFull)
+table(predict(modFitRfFull,testing), testing$classe)</code></pre>
 <pre><code>##    
 ##       A   B   C   D   E
 ##   A 364 295 170 271 298
@@ -302,38 +228,134 @@ print(modFitRfFull)</code></pre>
 ##   D   1   0   0   2   0
 ##   E 407 314 360 279 333</code></pre>
 <p>Adding a “cv” argument to trControl fixes this, and gives really excellent results.</p>
-<pre class="r"><code>#   set.seed(5358)
-#   modFitRfFullCv &lt;- train(classe ~ ., method=&quot;rf&quot;, trControl = trainControl(method=&quot;cv&quot;), 
-#                               prox=TRUE, data=training)
-#   saveRDS(modFitRfFullCv, file=&quot;modFitRfFullCv001.rds&quot;)
-modFitRfFullCv &lt;-  readRDS(&quot;modFitRfFullCv001.rds&quot;)
-print(modFitRfFullCv)</code></pre>
-<pre><code>## Random Forest 
-## 
-## 9619 samples
-##   52 predictor
-##    5 classes: 'A', 'B', 'C', 'D', 'E' 
-## 
-## No pre-processing
-## Resampling: Cross-Validated (10 fold) 
-## Summary of sample sizes: 8658, 8657, 8657, 8657, 8657, 8657, ... 
-## Resampling results across tuning parameters:
-## 
-##   mtry  Accuracy   Kappa      Accuracy SD  Kappa SD   
-##    2    0.9861737  0.9825092  0.004212460  0.005327985
-##   27    0.9886676  0.9856638  0.002569519  0.003250995
-##   52    0.9848199  0.9807973  0.003872782  0.004903765
-## 
-## Accuracy was used to select the optimal model using  the largest value.
-## The final value used for the model was mtry = 27.</code></pre>
-<pre class="r"><code>table(predict(modFitRfFullCv,testing), testing$classe)</code></pre>
-<pre><code>##    
-##        A    B    C    D    E
-##   A 1171   10    0    0    0
-##   B    0  778    4    0    1
-##   C    0    9  708    9    4
-##   D    0    0    6  665    7
-##   E    0    0    0    1  745</code></pre>
+<pre class="r"><code>if( !file.exists(&quot;modFitRfFullCv001.rds&quot;)) {
+    set.seed(5358)
+    modFitRfFullCv &lt;- train(classe ~ ., method=&quot;rf&quot;, trControl = trainControl(method=&quot;cv&quot;), 
+                               prox=TRUE, data=training)
+    saveRDS(modFitRfFullCv, file=&quot;modFitRfFullCv001.rds&quot;)
+} else {
+    modFitRfFullCv &lt;-  readRDS(&quot;modFitRfFullCv001.rds&quot;)
+}
+
+#print(modFitRfFullCv)
+predRfFullCv &lt;- predict(modFitRfFullCv,testing)
+table(predRfFullCv, testing$classe)</code></pre>
+<pre><code>##             
+## predRfFullCv    A    B    C    D    E
+##            A 1171   10    0    0    0
+##            B    0  778    4    0    1
+##            C    0    9  708    9    4
+##            D    0    0    6  665    7
+##            E    0    0    0    1  745</code></pre>
+<pre class="r"><code>accRfCv &lt;- sum(predRfFullCv == testing$classe)/length(testing$classe)
+errRfCv &lt;- 1 - accRfCv</code></pre>
+</div>
+<div id="linear-discriminant-analysis" class="section level2">
+<h2>Linear Discriminant Analysis</h2>
+<p>Linear Discriminant Analysis had a much lower accuracy than either random forests or boosting.</p>
+<pre class="r"><code>if( !file.exists(&quot;modFitLda001.rds&quot;)) {
+    set.seed(9793)
+    modFitLda &lt;- train(classe ~ ., data = training, method = &quot;lda&quot;)
+    saveRDS(modFitLda, file=&quot;modFitLda001.rds&quot;)
+} else {
+    modFitLda &lt;-  readRDS(&quot;modFitLda001.rds&quot;)
+}
+
+predLda &lt;- predict(modFitLda, testing)
+table(predLda, testing$classe)</code></pre>
+<pre><code>##        
+## predLda   A   B   C   D   E
+##       A 944 110  68  30  25
+##       B  26 520  75  27 144
+##       C  99 109 475  84  65
+##       D  97  27  77 503  61
+##       E   5  31  23  31 462</code></pre>
+<pre class="r"><code>accLda &lt;- sum(predLda == testing$classe)/length(testing$classe)
+errLda &lt;- sum(predLda != testing$classe)/length(testing$classe)</code></pre>
+</div>
+<div id="stacking" class="section level2">
+<h2>Stacking</h2>
+<p>Stacking the lda, rf and gbm results together gave us only marginally higher accuracy at the cost of much higher computational effort.</p>
+<pre class="r"><code>stackedDf &lt;- data.frame(predRf, predGbm, predLda, classe =testing$classe)
+
+if( !file.exists(&quot;modFitStackedRf001.rds&quot;)) {
+    set.seed(2386)
+    modFitStackedRf &lt;- train(classe ~ ., method=&quot;rf&quot;, data = stackedDf)
+    saveRDS(modFitStackedRf, file=&quot;modFitStackedRf001.rds&quot;)
+} else {
+    modFitStackedRf &lt;-  readRDS(&quot;modFitStackedRf001.rds&quot;)
+}
+
+stackedPred &lt;- predict(modFitStackedRf, stackedDf)
+table(stackedPred, testing$classe)</code></pre>
+<pre><code>##            
+## stackedPred    A    B    C    D    E
+##           A 1171   10    0    0    0
+##           B    0  778    4    0    1
+##           C    0    9  708    9    1
+##           D    0    0    6  665    5
+##           E    0    0    0    1  750</code></pre>
+<pre class="r"><code>accStackedRf &lt;- sum(stackedPred == testing$classe)/length(testing$classe)
+errStacked &lt;- sum(stackedPred != testing$classe)/length(testing$classe)</code></pre>
+</div>
+<div id="expected-error-rate" class="section level2">
+<h2>Expected error rate</h2>
+<p>The expected out-of-sample error rate was calculated by looking at the total mis-matches divided by the total number of instances:</p>
+<pre class="r"><code>sum(predRf == testing$classe)/length(testing$classe)</code></pre>
+<pre><code>## [1] 0.9876153</code></pre>
+<pre class="r"><code>sum(predGbm == testing$classe)/length(testing$classe)</code></pre>
+<pre><code>## [1] 0.9643031</code></pre>
+<div id="validation" class="section level3">
+<h3>Validation</h3>
+<pre class="r"><code>predRfValid &lt;- predict(modFitRfFullCv, validationData)
+table(predRfValid, validationData$classe)</code></pre>
+<pre><code>##            
+## predRfValid    A    B    C    D    E
+##           A 1672   15    0    0    0
+##           B    1 1118    4    0    0
+##           C    1    5 1019   19    3
+##           D    0    1    3  945    5
+##           E    0    0    0    0 1074</code></pre>
+<pre class="r"><code>accRfValidation &lt;- sum(predRfValid == validationData$classe)/length(validationData$classe)
+predGbmValid &lt;- predict(modFitGbmFull, validationData)
+accGbmValidation &lt;- sum(predGbmValid == validationData$classe)/length(validationData$classe)
+predLdaValid &lt;- predict(modFitLda, validationData)
+accLdaValidation &lt;- sum(predLdaValid == validationData$classe)/length(validationData$classe)
+
+stackedDfValid &lt;- data.frame(predRfValid, predGbmValid, predLdaValid, classe =validationData$classe)
+if( !file.exists(&quot;modFitStackedRfValid001.rds&quot;)) {
+    set.seed(2386)
+    modFitStackedRfValid &lt;- train(classe ~ ., method=&quot;rf&quot;, data = stackedDfValid)
+    saveRDS(modFitStackedRfValid, file=&quot;modFitStackedRfValid001.rds&quot;)
+} else {
+    modFitStackedRfValid &lt;-  readRDS(&quot;modFitStackedRfValid001.rds&quot;)
+}
+
+predValidStackedRf &lt;- predict(modFitStackedRfValid, validationData)
+accStackedValid &lt;- sum(predValidStackedRf == validationData$classe)/length(validationData$classe)
+errStackedValid &lt;- 1 - accStackedValid </code></pre>
+</div>
+</div>
+<div id="submission-code" class="section level2">
+<h2>Submission Code</h2>
+<pre class="r"><code>predSubmission &lt;- predict(modFitRfFullCv, submissionData)
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0(&quot;problem_id_&quot;,i,&quot;.txt&quot;)
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+if( !dir.exists(&quot;submission&quot;) ) {
+    dir.create(&quot;submission&quot;)
+}
+
+currentDir &lt;- getwd()
+setwd(&quot;submission&quot;)
+
+pml_write_files(predSubmission)</code></pre>
 </div>
 </div>
 

@@ -12,35 +12,42 @@ measurements from sensors worn by the study participants.
 
 # Preprocessing
 
-```{r, cache=TRUE}
+```{r}
 
 library(doParallel)
 registerDoParallel(cores=4)
 
-library(dplyr)
 library(randomForest)
 library(caret)
 library(caretEnsemble)
+library(dplyr)
 
+```
+
+```{r, cache=TRUE}
 if( !dir.exists("data") ) {
     dir.create("data")
 }
 
-download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", 
-              "data/pml-training.csv", method="wget")
+if( !file.exists("data/pml-training.csv")) {
+    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", 
+                  "data/pml-training.csv", method="wget")
+}
 
 trainingDataRaw <- read.csv('data/pml-training.csv', stringsAsFactors=FALSE)
 
 
-download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", 
-              "data/pml-testing.csv", method="wget")
+if( !file.exists("data/pml-testing.csv")) {
+    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", 
+                    "data/pml-testing.csv", method="wget")
+}
 
 submissionData <- read.csv('data/pml-testing.csv', stringsAsFactors=FALSE)
 
 set.seed(3141)
 
 classe <- as.factor(trainingDataRaw$classe)
-trainingData <- select(trainingDataRaw, -classe)
+trainingData <- dplyr::select(trainingDataRaw, -classe)
 
 # Some columns are almost entirely NA
 includeCol <- sapply(trainingData, function(x) { sum(is.na(x)) } ) == 0
@@ -49,8 +56,9 @@ trainingData <- trainingData[includeNames]
 
 # Omit bookkeeping
 
-trainingData <- select(trainingData, -c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2,
-                        cvtd_timestamp, new_window, num_window))
+trainingData <- dplyr::select(trainingData, 
+        -c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2,
+            cvtd_timestamp, new_window, num_window))
 
 includeCol <- sapply(trainingData, function(x) { sum(is.na(as.numeric(x))) }) == 0
 includeNames <- names(includeCol)[includeCol == TRUE]
@@ -75,15 +83,17 @@ testing <- buildData[-inTraining,]
 Boosting generated very good results, using method "gbm" with train().
 
 ```{r, cache=TRUE}
-
-# 
-# Read in the model generated and saved by
-#   modFitGbmFull <- train(classe ~ ., method="gbm", verbose=FALSE, data=training)
-#   saveRDS(modFitGbmFull, file="modFitGbmFull001.rds")
-#
-modFitGbmFull <- readRDS("modFitGbmFull001.rds")
-print(modFitGbmFull)
-table(predict(modFitGbmFull,testing), testing$classe)
+if( !file.exists("modFitGbmFull001.rds")) {
+    modFitGbmFull <- train(classe ~ ., method="gbm", verbose=FALSE, data=training)
+    saveRDS(modFitGbmFull, file="modFitGbmFull001.rds")
+} else {
+    modFitGbmFull <- readRDS("modFitGbmFull001.rds")
+}
+#print(modFitGbmFull)
+predGbm <- predict(modFitGbmFull,testing)
+table(predGbm, testing$classe)
+accGbm <- sum(predGbm == testing$classe)/length(testing$classe)
+errGbm <- 1 - accGbm
 ```
 
 ## Random Forests
@@ -93,27 +103,141 @@ an example of why you need to do cross validation.  When train() is run with the
 and no cv specification we get very bad results on the testing set.
 
 ```{r, cache=TRUE}
-# 
-# Read in the model generated and saved by
-#   set.seed(5926)
-#   modFitRfFull <- train(classe ~ ., method="rf", prox=TRUE, data=training)
-#   saveRDS(modFitRfFull, file="modFitRfFull001.rds")
-#
-modFitRfFull <-  readRDS("modFitRfFull001.rds")
-print(modFitRfFull)
+if( !file.exists("modFitRfFull001.rds")) {
+    set.seed(5926)
+    modFitRfFull <- train(classe ~ ., method="rf", prox=TRUE, data=training)
+    saveRDS(modFitRfFull, file="modFitRfFull001.rds")
+} else {
+    modFitRfFull <-  readRDS("modFitRfFull001.rds")
+}
+
+#print(modFitRfFull)
 table(predict(modFitRfFull,testing), testing$classe)
 ```
 
 Adding a "cv" argument to trControl fixes this, and gives really excellent results.
 
 ```{r, cache=TRUE}
-#   set.seed(5358)
-#   modFitRfFullCv <- train(classe ~ ., method="rf", trControl = trainControl(method="cv"), 
-#                               prox=TRUE, data=training)
-#   saveRDS(modFitRfFullCv, file="modFitRfFullCv001.rds")
-modFitRfFullCv <-  readRDS("modFitRfFullCv001.rds")
-print(modFitRfFullCv)
-table(predict(modFitRfFullCv,testing), testing$classe)
+if( !file.exists("modFitRfFullCv001.rds")) {
+    set.seed(5358)
+    modFitRfFullCv <- train(classe ~ ., method="rf", trControl = trainControl(method="cv"), 
+                               prox=TRUE, data=training)
+    saveRDS(modFitRfFullCv, file="modFitRfFullCv001.rds")
+} else {
+    modFitRfFullCv <-  readRDS("modFitRfFullCv001.rds")
+}
+
+#print(modFitRfFullCv)
+predRfFullCv <- predict(modFitRfFullCv,testing)
+table(predRfFullCv, testing$classe)
+accRfCv <- sum(predRfFullCv == testing$classe)/length(testing$classe)
+errRfCv <- 1 - accRfCv
 
 ```
 
+## Linear Discriminant Analysis
+
+Linear Discriminant Analysis had a much lower accuracy than either random forests or 
+boosting.  
+
+```{r, cache=TRUE}
+if( !file.exists("modFitLda001.rds")) {
+    set.seed(9793)
+    modFitLda <- train(classe ~ ., data = training, method = "lda")
+    saveRDS(modFitLda, file="modFitLda001.rds")
+} else {
+    modFitLda <-  readRDS("modFitLda001.rds")
+}
+
+predLda <- predict(modFitLda, testing)
+table(predLda, testing$classe)
+accLda <- sum(predLda == testing$classe)/length(testing$classe)
+errLda <- sum(predLda != testing$classe)/length(testing$classe)
+
+```
+
+## Stacking
+
+Stacking the lda, rf and gbm results together gave us only marginally higher accuracy
+at the cost of much higher computational effort.
+
+```{r, cache=TRUE}
+
+stackedDf <- data.frame(predRf, predGbm, predLda, classe =testing$classe)
+
+if( !file.exists("modFitStackedRf001.rds")) {
+    set.seed(2386)
+    modFitStackedRf <- train(classe ~ ., method="rf", data = stackedDf)
+    saveRDS(modFitStackedRf, file="modFitStackedRf001.rds")
+} else {
+    modFitStackedRf <-  readRDS("modFitStackedRf001.rds")
+}
+
+stackedPred <- predict(modFitStackedRf, stackedDf)
+table(stackedPred, testing$classe)
+accStackedRf <- sum(stackedPred == testing$classe)/length(testing$classe)
+errStacked <- sum(stackedPred != testing$classe)/length(testing$classe)
+```
+
+## Expected error rate
+
+The expected out-of-sample error rate was calculated by looking at the total mis-matches 
+divided by the total number of instances:
+
+```{r}
+sum(predRf == testing$classe)/length(testing$classe)
+sum(predGbm == testing$classe)/length(testing$classe)
+```
+
+### Validation
+
+```{r, cache=TRUE}
+predRfValid <- predict(modFitRfFullCv, validationData)
+table(predRfValid, validationData$classe)
+accRfValidation <- sum(predRfValid == validationData$classe)/length(validationData$classe)
+predGbmValid <- predict(modFitGbmFull, validationData)
+accGbmValidation <- sum(predGbmValid == validationData$classe)/length(validationData$classe)
+predLdaValid <- predict(modFitLda, validationData)
+accLdaValidation <- sum(predLdaValid == validationData$classe)/length(validationData$classe)
+
+stackedDfValid <- data.frame(predRfValid, predGbmValid, predLdaValid, classe =validationData$classe)
+if( !file.exists("modFitStackedRfValid001.rds")) {
+    set.seed(2386)
+    modFitStackedRfValid <- train(classe ~ ., method="rf", data = stackedDfValid)
+    saveRDS(modFitStackedRfValid, file="modFitStackedRfValid001.rds")
+} else {
+    modFitStackedRfValid <-  readRDS("modFitStackedRfValid001.rds")
+}
+
+predValidStackedRf <- predict(modFitStackedRfValid, validationData)
+accStackedValid <- sum(predValidStackedRf == validationData$classe)/length(validationData$classe)
+errStackedValid <- 1 - accStackedValid 
+
+```
+
+## Submission Code
+
+```{r, echo=TRUE, eval=FALSE, cache=TRUE}
+
+predSubmission <- predict(modFitRfFullCv, submissionData)
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+if( !dir.exists("submission") ) {
+    dir.create("submission")
+}
+
+currentDir <- getwd()
+setwd("submission")
+
+pml_write_files(predSubmission)
+
+
+
+```
