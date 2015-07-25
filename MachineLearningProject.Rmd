@@ -4,13 +4,12 @@ author: "Kevin Brock"
 date: "July 10, 2015"
 output: html_document
 ---
+```{r setoptions, echo=FALSE}
 
-# Overview
-
-We're trying to predict which of five forms of an activity is being performed based on 
-measurements from sensors worn by the study participants.
-
-# Preprocessing
+library(knitr)
+opts_chunk$set(echo=FALSE, results="hide", message=FALSE, warning=FALSE)
+               
+```
 
 ```{r}
 
@@ -23,6 +22,24 @@ library(caretEnsemble)
 library(dplyr)
 
 ```
+
+# Overview
+
+We're trying to predict which of five forms of an activity is being performed based on measurements from sensors worn by the study participants.  The data set consists of 19622 observations, or 160 variables.
+
+You can find more information about the original research [here](http://groupware.les.inf.puc-rio.br/har#wle_paper_section).
+
+The R code which generated these results can be found in the original R Markdown File [here](https://github.com/KJBrock/PMLProject/blob/master/MachineLearningProject.Rmd).
+
+# Preprocessing
+
+We split the data set into a training set, a test set, and a validation set.  The validation data is 30% of the original data, the training data is 49% of the original data, and the test data is 21% of the original data (two 70/30 splits).
+
+Examining the training data set we see that the majority of the columns are essentially empty.  They have more than 19200 empty empty entries out of 19622 total data points. Most of them in fact have exactly 19216.  This indicates that the values which are there aren't related to particular exercises or individuals.  
+
+We removed those columns, as well as bookkeeping columns which are not relevant to predicting future results, such as X, user_name, timestamps, and windows.
+
+We also converted classe to a factor variable, so that the algorithms would correctly identify this as a classification problem.
 
 ```{r, cache=TRUE}
 if( !dir.exists("data") ) {
@@ -78,71 +95,57 @@ testing <- buildData[-inTraining,]
 
 ```
 
-## Boosting
+## Method Selection
 
-Boosting generated very good results, using method "gbm" with train().
+I chose random forests, boosting, and linear discriminant analysis as candidate methods.  The problem is classifying multiple categories, not fitting a line through a numeric continuum or distinguishing two results from each other, 
+
+```{r}
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+```
+
+### Boosting
 
 ```{r, cache=TRUE}
 if( !file.exists("modFitGbmFull001.rds")) {
+    set.seed(5358)
     modFitGbmFull <- train(classe ~ ., method="gbm", verbose=FALSE, data=training)
     saveRDS(modFitGbmFull, file="modFitGbmFull001.rds")
 } else {
     modFitGbmFull <- readRDS("modFitGbmFull001.rds")
 }
-#print(modFitGbmFull)
 predGbm <- predict(modFitGbmFull,testing)
 table(predGbm, testing$classe)
 accGbm <- sum(predGbm == testing$classe)/length(testing$classe)
 errGbm <- 1 - accGbm
 ```
 
-## Random Forests
+Boosting generated very good results, using train() with method "gbm".  We got an in-sample error rate of `r errGbm`.
 
-Random forests gave me the best results for this problem.  The first attempt was 
-an example of why you need to do cross validation.  When train() is run with the "rf" method 
-and no cv specification we get very bad results on the testing set.
-
-```{r, cache=TRUE}
-if( !file.exists("modFitRfFull001.rds")) {
-    set.seed(5926)
-    modFitRfFull <- train(classe ~ ., method="rf", prox=TRUE, data=training)
-    saveRDS(modFitRfFull, file="modFitRfFull001.rds")
-} else {
-    modFitRfFull <-  readRDS("modFitRfFull001.rds")
-}
-
-#print(modFitRfFull)
-table(predict(modFitRfFull,testing), testing$classe)
-```
-
-Adding a "cv" argument to trControl fixes this, and gives really excellent results.
+### Random Forests
 
 ```{r, cache=TRUE}
 if( !file.exists("modFitRfFullCv001.rds")) {
     set.seed(5358)
-    modFitRfFullCv <- train(classe ~ ., method="rf", trControl = trainControl(method="cv"), 
-                               prox=TRUE, data=training)
+    modFitRfFullCv <- train(classe ~ ., method="rf", trControl = control,
+                            prox=TRUE, data=training)
     saveRDS(modFitRfFullCv, file="modFitRfFullCv001.rds")
 } else {
     modFitRfFullCv <-  readRDS("modFitRfFullCv001.rds")
 }
 
-#print(modFitRfFullCv)
 predRfFullCv <- predict(modFitRfFullCv,testing)
 table(predRfFullCv, testing$classe)
 accRfCv <- sum(predRfFullCv == testing$classe)/length(testing$classe)
 errRfCv <- 1 - accRfCv
-
 ```
 
-## Linear Discriminant Analysis
+Random forests gave me the best results for this problem. The in-sample error rate was `r errRfCv`.
 
-Linear Discriminant Analysis had a much lower accuracy than either random forests or 
-boosting.  
+### Linear Discriminant Analysis
 
 ```{r, cache=TRUE}
 if( !file.exists("modFitLda001.rds")) {
-    set.seed(9793)
+    set.seed(5358)
     modFitLda <- train(classe ~ ., data = training, method = "lda")
     saveRDS(modFitLda, file="modFitLda001.rds")
 } else {
@@ -152,14 +155,14 @@ if( !file.exists("modFitLda001.rds")) {
 predLda <- predict(modFitLda, testing)
 table(predLda, testing$classe)
 accLda <- sum(predLda == testing$classe)/length(testing$classe)
-errLda <- sum(predLda != testing$classe)/length(testing$classe)
+errLda <- 1-accLda
 
 ```
 
-## Stacking
+Linear Discriminant Analysis had a much lower accuracy than either random forests or 
+boosting.  The in-sample error rate was `r errLda`.
 
-Stacking the lda, rf and gbm results together gave us only marginally higher accuracy
-at the cost of much higher computational effort.
+### Stacking
 
 ```{r, cache=TRUE}
 
@@ -179,26 +182,45 @@ accStackedRf <- sum(stackedPred == testing$classe)/length(testing$classe)
 errStacked <- sum(stackedPred != testing$classe)/length(testing$classe)
 ```
 
-## Expected error rate
+Stacking the lda, rf and gbm results together using rf as the algorithm for training on the stacked data frame gave us only marginally higher accuracy at the cost of much higher computational effort.  We got an in-sample error of `r errStacked`. 
 
-The expected out-of-sample error rate was calculated by looking at the total mis-matches 
-divided by the total number of instances:
+### Results
 
-```{r}
-sum(predRf == testing$classe)/length(testing$classe)
-sum(predGbm == testing$classe)/length(testing$classe)
+The results for the four methods can be compared in table form.  Running the models through resample() gives us a comparison of the expected accuracy & kappa values for each of them.  Expected error rates are 1 - accuracy.
+
+```{r, results='markup'}
+results <- resamples(list(LDA=modFitLda, 
+                          GBM=modFitGbmFull, 
+                          RF=modFitRfFull, 
+                          STACKED=modFitStackedRf))
+summary(results)
 ```
 
-### Validation
+We can also see visually that the RF and GBM results are far superior, while the stacked result is extremely close to the random forest's values.
+
+```{r}
+bwplot(results)
+```
+
+Although the stacked values are better than the random forest values, the fact that stacking requires us to run both random forest and boosting on each data set makes it less desirable in this case for the best method.
+
+Boosting ran significantly faster than random forests on my systems, and so in some cases we might want to use boosting rather than random forests when speed is particularly important.
+
+## Cross Validation and Expected Error Rate
+
+The expected out-of-sample error rate was calculated by testing the models on the validation data set.  The algorithms do cross validation from the testing set as part of the training process, and the testing data set is used to train the stacked algorithm, so we kept a separate validation data set from the initial data to find the expected out-of-sample error rate.
 
 ```{r, cache=TRUE}
 predRfValid <- predict(modFitRfFullCv, validationData)
 table(predRfValid, validationData$classe)
 accRfValidation <- sum(predRfValid == validationData$classe)/length(validationData$classe)
+errRfValidation <- 1- accRfValidation
 predGbmValid <- predict(modFitGbmFull, validationData)
 accGbmValidation <- sum(predGbmValid == validationData$classe)/length(validationData$classe)
+errGbmValidation <- 1- accGbmValidation
 predLdaValid <- predict(modFitLda, validationData)
 accLdaValidation <- sum(predLdaValid == validationData$classe)/length(validationData$classe)
+errLdaValidation <- 1-accLdaValidation
 
 stackedDfValid <- data.frame(predRfValid, predGbmValid, predLdaValid, classe =validationData$classe)
 if( !file.exists("modFitStackedRfValid001.rds")) {
@@ -212,12 +234,14 @@ if( !file.exists("modFitStackedRfValid001.rds")) {
 predValidStackedRf <- predict(modFitStackedRfValid, validationData)
 accStackedValid <- sum(predValidStackedRf == validationData$classe)/length(validationData$classe)
 errStackedValid <- 1 - accStackedValid 
-
+table
 ```
 
-## Submission Code
+```{r, results='markup'}
+as.data.frame(cbind(method=c("RF", "GBM", "LDA", "STACKED"), errorRate = c(errRfValidation, errGbmValidation, errLdaValidation, errStackedValid)))
+```
 
-```{r, echo=TRUE, eval=FALSE, cache=TRUE}
+```{r, eval=FALSE, cache=TRUE}
 
 predSubmission <- predict(modFitRfFullCv, submissionData)
 
@@ -237,7 +261,4 @@ currentDir <- getwd()
 setwd("submission")
 
 pml_write_files(predSubmission)
-
-
-
 ```
